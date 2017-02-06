@@ -1,0 +1,345 @@
+###################################################
+##此段代码用于目标点出现之前，两个大炮感兴趣区内的注视时间随着背景点颜色比例变化而变化的情况
+###################################################
+rm(list=ls())
+##导入两个函数
+library(ggplot2)
+library(plyr)
+##确定数据文件路径
+pa0='D:/nanweizhidropbox/Dropbox/2Cannon/exp2_20150519_2Cannon_Eye_30subs/data/Two Cannon Eye_full/Data'
+##确定导出图片，SPSS数据文件
+pa='D:/nanweizhidropbox/Dropbox/2Cannon/exp2_20150519_2Cannon_Eye_30subs/data/Two Cannon Eye_full/Result/Before Target_FD_Color_Ratio'
+
+##读入数据
+#目标出现之前的数据分析
+data.raw<-read.table(paste(pa0,'3_33_beforetarget.csv',sep='/'),header=TRUE,sep=",",na.string=NULL)
+#目标出现之后的数据分析
+#data.raw<-read.table(paste(pa0,'3_33_aftertarget.csv',sep='/'),header=TRUE,sep=",",na.string=NULL)
+## 抽取相关变量
+data.raw$ACC=sapply(data.raw$corrresp==data.raw$whichButton,sum)
+myvars=c('RECORDING_SESSION_LABEL','nredpellets','cannonangle',
+         'cannonorib','cannonorir','targetori','targetdist','targetcolor',
+         'ACC','RT','IA_DWELL_TIME')
+data.cat=data.raw[myvars]
+##对数据做一些预处理，删除不必要试次，修改标题，修改变量类型
+##保留数据中是正式实验的试次
+data.noNA=subset(data.cat,nredpellets!="")
+##将变量名简化
+names(data.noNA)[names(data.noNA)=="RECORDING_SESSION_LABEL"] <- "Subject"
+names(data.noNA)[names(data.noNA)=="IA_DWELL_TIME"] <- "time"
+data.noNA$Subject = factor(data.noNA$Subject)
+data.noNA$cannonangle = factor(data.noNA$cannonangle)
+
+
+##data.beforetarget=subset(data.noNA,cannonangle==180)
+##将之前的代码只有180°条件的，修改为包含180和0°
+data.beforetarget=data.noNA
+##由于31号被试眼睛有些斜视。因此删除
+data.beforetarget=subset(data.beforetarget,Subject!="sub31")
+
+#数据不规则，所以首先找出相邻的合并区域
+#k为要合并的区域数
+k=seq(from=1,by=16,to=nrow(data.beforetarget))
+#提取
+data.beforetarget.IA=data.beforetarget[k,]
+#找到感兴趣区
+orib=data.beforetarget.IA$cannonorib
+orib=data.frame(orib-1,orib,orib+1)
+orib[orib[,1]==0,1]=8
+orib[orib[,3]==9,3]=1
+orib=orib+rep(k-1,3)
+#将时间合并
+data.beforetarget.IA$tb=apply(orib,1,function(p) sum(data.beforetarget$time[p]))
+
+orir=data.beforetarget.IA$cannonorir
+orir=data.frame(orir-1,orir,orir+1)
+orir[orir[,1]==0,1]=8
+orir[orir[,3]==9,3]=1
+orir=orir+rep(k-1,3)
+data.beforetarget.IA$tr=apply(orir,1,function(p) sum(data.beforetarget$time[p]))
+
+##根据目标大炮的朝向，分离出朝上和朝下两种781为朝上，345为朝下，26为中性
+b=(data.beforetarget.IA$cannonorib==1 | data.beforetarget.IA$cannonorib==8 | data.beforetarget.IA$cannonorib==7)
+data.beforetarget.IA$BluecannonSimon[b]<-c("Up")
+c=(data.beforetarget.IA$cannonorib==3 | data.beforetarget.IA$cannonorib==4 | data.beforetarget.IA$cannonorib==5)
+data.beforetarget.IA$BluecannonSimon[c]<-c("Down")
+data.beforetarget.IA$BluecannonSimon[!(b|c)]<-c("neutral")
+
+
+##根据目标大炮的朝向，分离出朝上和朝下两种781为朝上，345为朝下，26为中性
+b=(data.beforetarget.IA$cannonorir==1 | data.beforetarget.IA$cannonorir==8 | data.beforetarget.IA$cannonorir==7)
+data.beforetarget.IA$RedcannonSimon[b]<-c("Up")
+c=(data.beforetarget.IA$cannonorir==3 | data.beforetarget.IA$cannonorir==4 | data.beforetarget.IA$cannonorir==5)
+data.beforetarget.IA$RedcannonSimon[c]<-c("Down")
+data.beforetarget.IA$RedcannonSimon[!(b|c)]<-c("neutral")
+
+# ##将注视时间合并成一列
+len=nrow(data.beforetarget.IA)
+data.beforetarget.IA[1:len+len,]=data.beforetarget.IA
+
+data.beforetarget.IA$t[1:len]=data.beforetarget.IA$tb[1:len]
+data.beforetarget.IA$Simon[1:len]=data.beforetarget.IA$BluecannonSimon[1:len]
+data.beforetarget.IA$CannonColor[1:len]='Blue'
+data.beforetarget.IA$t[1:len+len]=data.beforetarget.IA$tr[1:len]
+data.beforetarget.IA$Simon[1:len+len]=data.beforetarget.IA$RedcannonSimon[1:len]
+data.beforetarget.IA$CannonColor[1:len +len]='Red'
+#data.beforetarget.IA=data.beforetarget.IA[,-c(12,13)]
+
+##删除三个标准差数据
+##删除掉反应时大于0的正确试次
+data.beforetarget.IA=subset(data.beforetarget.IA, t>0)
+data.beforetarget.IA=subset(data.beforetarget.IA,ACC==1)
+##删除三个标准差之外的数据
+data.beforetarget.IA=data.beforetarget.IA[data.beforetarget.IA$t<(mean(data.beforetarget.IA$t)+3*sd(data.beforetarget.IA$t)),]
+
+
+
+data.beforetarget.IA$Simon=factor(data.beforetarget.IA$Simon)
+data.beforetarget.IA$CannonColor=factor(data.beforetarget.IA$CannonColor)
+
+str(data.beforetarget.IA)
+##计算被试个数
+nSubject=nlevels(data.beforetarget.IA$Subject)
+
+## 将颜色比例蓝：红放在colorRatio变量中，并转为因子
+data.beforetarget.IA$ColorRatio = paste(as.character(8 - data.beforetarget.IA$nredpellets),
+                                        as.character(data.beforetarget.IA$nredpellets), sep=" : ")
+data.beforetarget.IA$ColorRatio <- factor(data.beforetarget.IA$ColorRatio)
+str(data.beforetarget.IA)
+
+
+##分离出冲突，颜色比例，目标颜色的数据
+data.beforetarget.IA.TcolRat.Subject = ddply(data.beforetarget.IA,.(Subject,CannonColor,ColorRatio,cannonangle),
+                                             summarize,t=mean(t))
+data.beforetarget.IA.TcolRat = ddply(data.beforetarget.IA.TcolRat.Subject,.(CannonColor,ColorRatio,cannonangle),
+                                    summarize,t.SD=sd(t),t=mean(t))
+
+data.beforetarget.IA.Simon.Subject=ddply(data.beforetarget.IA,.(Subject,Simon),
+                                        summarize,t=mean(t))
+data.beforetarget.IA.Simon = ddply(data.beforetarget.IA.Simon.Subject,.(Simon),
+                                     summarize,t.SD=sd(t),t=mean(t))
+
+
+##计算标准误
+data.beforetarget.IA.TcolRat$t.SE=data.beforetarget.IA.TcolRat$t.SD/sqrt(nSubject)
+
+#函数体：
+draw=function(data,aes.,name1,width.=4,height.=4,dpi.=150,
+              path.="E:",bg.="transparent",limits.=limits){
+  ## 定义errorbar的上下限
+  ##color表示图中线条的颜色，shape表示途中的圆点或三角，
+  #依次加上点和errorbar，设置点的大小，添加errorbar、线条、
+  #横纵坐标、线条对应的颜色、标题、白背景，黑线主题
+  #其中的参数可以添加到函数首部为变量
+  p=ggplot(data, aes.)+geom_point(size=4) + geom_errorbar(limits., width=0.1, size=0.8)+
+    geom_line(aes(group=LineGroup), size=1.5)+ylab("Fixation Duration (ms)")+xlab("Color Ratio (B:R)")+
+    scale_color_manual(values=c("#0000FF", "#FF0000"))+
+    theme_classic()+theme(legend.position = c(.55,.6))+theme(legend.box ="horizontal")
+  ##保存有legend的eps和png格式的图片
+  ggsave(p , file = paste0( name1 , ".eps" ) , width=width. , height=height. ,
+         dpi=dpi. ,  path = path. , bg=bg. )
+  ggsave(p , file = paste0( name1 , ".png" ) , width = width. , height = height. ,
+         dpi = dpi. ,  path = path. , bg = bg. )
+
+}
+
+
+#对数据进行作图并保存，其中可以调节ggsave函数中的参数。首先画出是否冲突的反应时
+#随颜色比例的变化，目标颜色为红或蓝的反应时随颜色比例的变化图。
+#定义errorbar的上下限：
+limits <- aes(ymax = t + t.SE/2, ymin=t - t.SE/2)
+#将conflic和CannonColor连在一起放在LineGroup变量中：
+data.beforetarget.IA.TcolRat$LineGroup = paste(as.character(data.beforetarget.IA.TcolRat$cannonangle),as.character(data.beforetarget.IA.TcolRat$CannonColor), sep="-")
+#定义作图的颜色(color)，形状(shape)，纵横轴变量(y~x)：
+aes=aes(color=CannonColor, y=t, x=ColorRatio)
+#作图并保存：
+draw( data = data.beforetarget.IA.TcolRat , aes = aes(color=CannonColor, shape = cannonangle, y=t, x=ColorRatio) ,name1 ='exp2_FD_onCannon ' ,path.=pa)
+
+
+##编写repeated-measure ANOVA的eta-squared函数
+es=function(x,n=NULL) {
+  if(is.null(n)) n=length(names(x))-2
+  k=NULL
+  p=summary(x)
+  for(i in (1:n)+1) {
+    l=unlist(p[i][[1]])
+    k=c(k,l[3]/sum(l[3:4]))
+  }
+  names(k)=names(p)[(1:n)+1]
+  k
+}
+
+sink(paste(pa,'bartlett-coltar FD.txt',sep='/'))
+##方差齐性检验
+bartlett.test(t~interaction(ColorRatio,
+                            CannonColor,cannonangle),data=data.beforetarget.IA.TcolRat.Subject)
+sink()
+##目标颜色，大炮夹角和背景点颜色比例方差分析
+ColRat=aov(t ~ CannonColor*ColorRatio*cannonangle + Error(Subject/
+                                                            (CannonColor*ColorRatio*cannonangle)), data=data.beforetarget.IA.TcolRat.Subject)
+sink(paste(pa,'aov CannonColor_ColorRatio FD.txt',sep='/'))
+summary(ColRat)
+es(ColRat)
+sink()
+
+
+#############
+##人口学数据
+####计算删除数据的比例
+##此数据没有以下任何信息
+shanchubili.Cond=100*(nrow(data.noNA)-nrow(data.3SD))/nrow(data.noNA)
+people=data.frame(被试数=nSubject,男性被试个数=nrow(data.male),
+                  年龄_最大值=max(data.3SD$Age[!is.na(data.3SD$Age)]),年龄_最小值=min(data.3SD$Age[!is.na(data.3SD$Age)]),
+                  年龄_平均值=mean(data.3SD$Age[!is.na(data.3SD$Age)]),年龄_标准差=sd(data.3SD$Age[!is.na(data.3SD$Age)]),删除比例=shanchubili.Cond)
+write.csv(people,paste(pa,'人口学数据 FD.csv',sep='/'))
+
+##输出平均值标准差
+write.csv(data.beforetarget.IA.TcolRat,paste(pa,'不同条件下的均值方差_Before Target_180_RatioColor_FD.csv',sep='/'))
+
+#优势效应，likely，unlikely
+data.beforetarget.IA.TcolRat.Subject.180=subset(data.beforetarget.IA.TcolRat.Subject,cannonangle==180)
+Ratio26.Angle180=subset(data.beforetarget.IA.TcolRat.Subject.180,ColorRatio=="2 : 6")
+Ratio26.Angle180.R=subset(Ratio26.Angle180,CannonColor=="Red")
+Ratio26.Angle180.B=subset(Ratio26.Angle180,CannonColor=="Blue")
+diff26_180=Ratio26.Angle180.B$t-Ratio26.Angle180.R$t
+Ratio44.Angle180=subset(data.beforetarget.IA.TcolRat.Subject.180,ColorRatio=="4 : 4")
+Ratio44.Angle180.R=subset(Ratio44.Angle180,CannonColor=="Red")
+Ratio44.Angle180.B=subset(Ratio44.Angle180,CannonColor=="Blue")
+diff44_180=Ratio44.Angle180.B$t-Ratio44.Angle180.R$t
+Ratio62.Angle180=subset(data.beforetarget.IA.TcolRat.Subject.180,ColorRatio=="6 : 2")
+Ratio62.Angle180.R=subset(Ratio62.Angle180,CannonColor=="Red")
+Ratio62.Angle180.B=subset(Ratio62.Angle180,CannonColor=="Blue")
+diff62_180=Ratio62.Angle180.B$t-Ratio62.Angle180.R$t
+write.csv(diff26_180,paste(pa,'beforetarget_Diff26_180_FD.csv',sep='/'))
+write.csv(diff44_180,paste(pa,'beforetarget_Diff44_180_FD.csv',sep='/'))
+write.csv(diff62_180,paste(pa,'beforetarget_Diff62_180_FD.csv',sep='/'))
+
+
+##分离出180度条件下的likely 和unlikely条件下的反应时
+c180=subset(data.beforetarget.IA.TcolRat.Subject.180,ColorRatio!="4 : 4")
+a=((c180$ColorRatio=="6 : 2"&c180$CannonColor=="Blue")|(c180$ColorRatio=="2 : 6"&c180$CannonColor=="Red"))
+b=((c180$ColorRatio=="6 : 2"&c180$CannonColor=="Red")|(c180$ColorRatio=="2 : 6"&c180$CannonColor=="Blue"))
+c180$Salience[a]="Sal"
+c180$Salience[b]="nonSal"
+likelyFD=subset(c180,Salience=="Sal")
+likelyFD= ddply(likelyFD,.(Subject),summarize,t=mean(t))
+unlikelyFD=subset(c180,Salience=="nonSal")
+unlikelyFD= ddply(unlikelyFD,.(Subject),summarize,t=mean(t))
+difflikely=unlikelyFD$t-likelyFD$t
+
+write.csv(difflikely,paste(pa,'beforetarget_Diff_Likely_FD.csv',sep='/'))
+
+
+
+#Simon效应，朝上，朝下
+data.beforetarget.IA.Simon.Subject.Up=subset(data.beforetarget.IA.Simon.Subject,Simon=="Up")
+data.beforetarget.IA.Simon.Subject.Down=subset(data.beforetarget.IA.Simon.Subject,Simon=="Down")
+
+diff_Simon=data.beforetarget.IA.Simon.Subject.Down$t-data.beforetarget.IA.Simon.Subject.Up$t
+write.csv(diff_Simon,paste(pa,'befortarget_Diff_Simon_FD.csv',sep='/'))
+
+
+###SPSS
+library(reshape)
+data.SPSS.AngColTar=cast(data.beforetarget.IA.TcolRat.Subject,Subject~cannonangle~CannonColor~ColorRatio,value="t")
+write.table(data.SPSS.AngColTar,paste(pa,'data_SPSS_AngColTar.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+data.beforetarget.IA.TcolRat.Subject.180=subset(data.beforetarget.IA.TcolRat.Subject,cannonangle==180)
+data.SPSS.AngColTar.180=cast(data.beforetarget.IA.TcolRat.Subject.180,Subject~cannonangle~CannonColor~ColorRatio,value="t")
+write.table(data.SPSS.AngColTar.180,paste(pa,'data_SPSS_AngColTar_180.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+data.beforetarget.IA.TcolRat.Subject.0=subset(data.beforetarget.IA.TcolRat.Subject,cannonangle==0)
+data.SPSS.AngColTar.0=cast(data.beforetarget.IA.TcolRat.Subject.0,Subject~cannonangle~CannonColor~ColorRatio,value="t")
+write.table(data.SPSS.AngColTar.0,paste(pa,'data_SPSS_AngColTar_0.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# ##根据背景点比例和目标点颜色，分离出优势大炮和非优势大炮
+# a=(data.beforetarget.IA$nredpellets==2)
+# b=(data.beforetarget.IA$nredpellets==6)
+# data.beforetarget.IA$SalientCannonFD[a]=data.beforetarget.IA$tb[a]
+# data.beforetarget.IA$SalientCannonFD[b]=data.beforetarget.IA$tr[b]
+# data.beforetarget.IA$nonSalientCannonFD[a]=data.beforetarget.IA$tr[a]
+# data.beforetarget.IA$nonSalientCannonFD[b]=data.beforetarget.IA$tb[b]
+# a=((data.beforetarget.IA$nredpellets==2&data.beforetarget.IA$targetcolor=="B")|
+#      (data.beforetarget.IA$nredpellets==6&data.beforetarget.IA$targetcolor=="R" ))
+# b=((data.beforetarget.IA$nredpellets==2&data.beforetarget.IA$targetcolor=="R")|
+#      (data.beforetarget.IA$nredpellets==6&data.beforetarget.IA$targetcolor=="B" ))
+# data.beforetarget.IA$Salience[a]="Sal"
+# data.beforetarget.IA$Salience[b]="nonSal"
+# 
+# data.beforetarget.IA.180=subset(data.beforetarget.IA,cannonangle==180)
+# data.beforetarget.IA.180=subset(data.beforetarget.IA.180,nredpellets != 4)
+# data.beforetarget.IA.180$Salience=factor(data.beforetarget.IA.180$Salience)
+# str(data.beforetarget.IA.180)
+# data.beforetarget.IA.SalnonSal.Subject = ddply(data.beforetarget.IA.180,.(Subject),summarize,SalientCannonFD=mean(SalientCannonFD),nonSalientCannonFD=mean(nonSalientCannonFD))
+# data.beforetarget.IA.SalnonSal.Subject$SalientFD=data.beforetarget.IA.SalnonSal.Subject$SalientCannonFD-
+#   data.beforetarget.IA.SalnonSal.Subject$nonSalientCannonFD
+# 
+# 
+# data.beforetarget.IA.180.SalienctRT=subset(data.beforetarget.IA,Salience=="Sal")
+# data.beforetarget.IA.SalienctRT.Subject = ddply(data.beforetarget.IA.180.SalienctRT,.(Subject),summarize,SalientRT=mean(RT))
+# 
+# data.beforetarget.IA.180.nonSalienctRT=subset(data.beforetarget.IA,Salience=="nonSal")
+# data.beforetarget.IA.180.nonSalienctRT.Subject = ddply(data.beforetarget.IA.180.nonSalienctRT,.(Subject),summarize,nonSalientRT=mean(RT))
+# 
+# SalientRT=data.beforetarget.IA.SalienctRT.Subject$SalientRT-data.beforetarget.IA.180.nonSalienctRT.Subject$nonSalientRT
+# 
+# cor.test(SalientRT,data.beforetarget.IA.SalnonSal.Subject$SalientFD)
+# plot(SalientRT, data.beforetarget.IA.SalnonSal.Subject$SalientFD,main="Correlationship of FD and RT on SaE",
+#      xlab="SalientRT", ylab="SalientFD", pch=1) 
+# 
+# 
+# 
+# # data.beforetarget.IA=subset(data.beforetarget.IA,cannonangle==180)
+# # data.beforetarget.IA$SalientFDeffect=data.beforetarget.IA$SalientCannonFD-data.beforetarget.IA$nonSalientCannonFD
+# # data.beforetarget.IA.SalnonSal.Subject = ddply(data.beforetarget.IA,.(Subject,Salience),
+# #                                              summarize,SalientCannonFD=mean(SalientCannonFD),
+# #                                                nonSalientCannonFD=mean(nonSalientCannonFD),
+# #                                                RT=mean(RT))
+# # data.Sal=subset(data.beforetarget.IA,Salience=="Sal")
+# # data.Sal=subset(data.Sal,SalientCannonFD!=0)
+# # cor.test(data.Sal$SalientCannonFD,data.Sal$RT)
+# # plot(data.Sal$SalientCannonFD, data.Sal$RT,main="Scatterplot Example",
+# #      xlab="SalientCannonFD", ylab="RT", pch=1) 
+# # 
+# # 
+# # data.nonSal=subset(data.beforetarget.IA,Salience=="nonSal")
+# # data.nonSal=subset(data.nonSal,nonSalientCannonFD!=0)
+# # cor.test(data.nonSal$nonSalientCannonFD,data.nonSal$RT)
+# # plot(data.nonSal$nonSalientCannonFD,data.nonSal$RT,main="Scatterplot Example",
+# #      xlab="nonSalientCannonFD", ylab="RT", pch=1) 
+# # 
+# # data.nonSal=subset(data.beforetarget.IA,Salience=="nonSal")
+# # data.nonSal=subset(data.nonSal,SalientCannonFD!=0)
+# # cor.test(data.nonSal$RT,data.nonSal$SalientCannonFD)
+# # plot(data.nonSal$SalientCannonFD,data.nonSal$RT,main="Scatterplot Example",
+# #      xlab="SalientCannonFD", ylab="RT", pch=1) 
+# # 
+# # ######注视时长与反应时之间的相关分析
+# # ##红色大炮注视时长与红色目标点反应时之间的相关
+# # data.redtarget=subset(data.beforetarget.IA,targetcolor=="R")
+# # data.RT.redFD=data.redtarget[,c(1,2,3,8,10,13,15)]
+# # cor.test(data.RT.redFD$RT,data.RT.redFD$tr)
+# # ##蓝色大炮注视时长与蓝色目标点反应时之间的相关
+# # data.bluetarget=subset(data.beforetarget.IA,targetcolor=="B")
+# # data.RT.blueFD=data.redtarget[,c(1,2,3,8,10,12,15)]
+# # cor.test(data.RT.blueFD$RT,data.RT.blueFD$tb)
+# # ####################
+# 
+# 
+# 
+# 
+# 
+# 
