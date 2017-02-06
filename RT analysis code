@@ -1,0 +1,289 @@
+###################################################
+##此段代码用于反应时分析
+###################################################
+rm(list=ls())
+##导入两个函数
+library(ggplot2)
+library(plyr)
+
+
+##确定数据文件路径
+pa0='D:/nanweizhidropbox/Dropbox/2Cannon/exp2_20150519_2Cannon_Eye_30subs/data/Two Cannon Eye_full/Data'
+##确定导出图片，SPSS数据文件
+pa='D:/nanweizhidropbox/Dropbox/2Cannon/exp2_20150519_2Cannon_Eye_30subs/data/Two Cannon Eye_full/Result/RT'
+##读入数据
+data.raw<-read.table(paste(pa0,'3_33_full.csv',sep='/'),header=TRUE,sep=",",na.string=NULL)
+data.raw$ACC=sapply(data.raw$corrresp==data.raw$whichButton,sum)
+## 抽取相关变量
+myvars1=c('RECORDING_SESSION_LABEL','nredpellets','cannonangle',
+'cannonorib','cannonorir','targetori','targetdist','targetcolor',
+'ACC','RT')
+
+
+myvars=c('Subject','nRedPellets','CannonAngle','CannonOriB','CannonOriR',
+'TargetOri','TargetDist','TargetColor','ACC','RT')
+data.cat=data.raw[myvars1]
+names(data.cat)=myvars
+##对数据做一些预处理，删除不必要试次，修改标题，修改变量类型
+##保留数据中是正式实验的试次
+data.nopractice=data.cat
+data.nopractice$Subject = factor(data.nopractice$Subject)
+
+##由于31号被试眼睛有些斜视。因此删除
+data.nopractice=subset(data.nopractice,Subject!="sub31")
+##删除掉反应时大于0的正确试次
+data.correct=subset(data.nopractice,RT>0)
+data.correct=subset(data.nopractice,ACC==1)
+##删除三个标准差之外的数据
+data.3SD=data.correct[data.correct$RT<(mean(data.correct$RT)+3*sd(data.correct$RT)),]
+
+a=mean(data.3SD$RT)
+
+##计算被试个数
+nSubject=nlevels(data.3SD$Subject)
+
+shanchubili=(nrow(data.nopractice)-nrow(data.3SD))/nrow(data.nopractice)
+
+
+## 将颜色比例蓝：红放在colorRatio变量中，并转为因???
+data.3SD$ColorRatio = paste(as.character(8 - data.3SD$nRedPellets),
+as.character(data.3SD$nRedPellets), sep=" : ")
+data.3SD$ColorRatio <- factor(data.3SD$ColorRatio)
+data.3SD$Angle = paste(as.character(data.3SD$CannonAngle))
+data.3SD$Angle <- factor(data.3SD$Angle)
+##根据目标大炮的朝向，分离出朝上和朝下两种781为朝上，345为朝下，26为中性
+a=(data.3SD$TargetColor=="B")
+data.3SD$TargetCannon[a]<-data.3SD$CannonOriB[a]
+data.3SD$TargetCannon[!a]<-data.3SD$CannonOriR[!a]
+b=(data.3SD$TargetCannon==1 | data.3SD$TargetCannon==8 | data.3SD$TargetCannon==7)
+data.3SD$Simon[b]<-c("Up")
+c=(data.3SD$TargetCannon==3 | data.3SD$TargetCannon==4 | data.3SD$TargetCannon==5)
+data.3SD$Simon[c]<-c("Down")
+data.3SD$Simon[!(b|c)]<-c("neutral")
+data.3SD$Simon<- factor(data.3SD$Simon)
+
+##分离出冲突，颜色比例，目标颜色的数据
+data.3SD.AngColTar.Subject=ddply(data.3SD,.(Subject,Angle,TargetColor,ColorRatio),summarize,RT=mean(RT))
+data.3SD.AngColTar=ddply(data.3SD.AngColTar.Subject,.(Angle,TargetColor,ColorRatio),summarize,RT.SD=sd(RT),RT=mean(RT))
+##AngSim
+data.3SD.AngSim.Subject=ddply(data.3SD,.(Subject,Angle,Simon),summarize,RT=mean(RT))
+####删除对应的neutral条件,朝向为2和6的条件
+data.3SD.AngSim.Subject=subset(data.3SD.AngSim.Subject,Simon !="neutral")
+data.3SD.AngSim=ddply(data.3SD.AngSim.Subject,.(Angle,Simon),summarize,RT.SD=sd(RT),RT=mean(RT))
+
+##计算标准误
+data.3SD.AngColTar$RT.SE=data.3SD.AngColTar$RT.SD/sqrt(nSubject)
+data.3SD.AngSim$RT.SE=data.3SD.AngSim$RT.SD/sqrt(nSubject)
+
+####计算删除数据的比例
+shanchubili.Cond=100*(nrow(data.nopractice)-nrow(data.3SD))/nrow(data.nopractice)
+people=data.frame(被试数=nSubject,男性被试个数=nrow(data.male),
+  年龄_最大值=max(data.3SD$Age[!is.na(data.3SD$Age)]),年龄_最小值=min(data.3SD$Age[!is.na(data.3SD$Age)]),
+  年龄_平均值=mean(data.3SD$Age[!is.na(data.3SD$Age)]),年龄_标准差=sd(data.3SD$Age[!is.na(data.3SD$Age)]),删除比例=shanchubili.Cond)
+write.csv(people,paste(pa,'人口学数据 RT.csv',sep='/'))
+
+
+
+##画出是否冲突的反应时随颜色比例的变化，目标颜色为红或蓝的反应时随颜色比例的变化图
+## 定义errorbar的上下限
+limits <- aes(ymax = RT + RT.SE/2, ymin=RT - RT.SE/2)
+##将conflic和targetcolor连在一起放在LineGroup变量中，
+data.3SD.AngColTar$LineGroup = paste(as.character(data.3SD.AngColTar$Angle),
+ as.character(data.3SD.AngColTar$TargetColor), sep="-")
+##color表示图中线条的颜色，shape表示途中的圆点或三角
+p = ggplot(data.3SD.AngColTar, aes(color=TargetColor, shape = Angle, y=RT, x=ColorRatio))
+##画上点和errorbar，设置点的大小，添加errorbar
+p = p + geom_point(size=4) + geom_errorbar(limits, width=0.1, size=0.8)
+##画上线条
+p = p + geom_line(aes(group=LineGroup), size=1.5)+ylim(750,1250)
+##添加横纵坐标
+p = p + ylab("RT (ms)")
+p = p + xlab("Pellet Color Ratio (Blue : Red)")
+##设置线条对应的颜色属???
+p = p + scale_color_manual(values=c("#0000FF", "#FF0000"))
+##添加标题
+#p = p + labs(title = "TargetColor Angle Ratio")
+##采用白背景，黑线主题
+##采用白背景，黑线主题
+p =  p + theme_classic()
+p=p+theme(legend.position = c(.5,.5))+theme(legend.box ="horizontal")
+##保存有legend的eps格式的图片，可变换路径
+ggsave(p, file="exp2_AngTarCol_RT.eps",
+       width=4, height=4, dpi=150, bg="transparent",path=pa)
+ggsave(p, file="exp2_AngTarCol_RT.png",
+       width=4, height=4, dpi=150, bg="transparent",path=pa)
+
+
+##画出Angle和Simon的图像
+## 定义errorbar的上下限
+limits <- aes(ymax = RT + RT.SE/2, ymin=RT - RT.SE/2)
+##将conflic和targetcolor连在一起放在LineGroup变量中，
+data.3SD.AngSim$LineGroup = paste(as.character(data.3SD.AngSim$Simon))
+##color表示图中线条的颜色，shape表示途中的圆点或三角
+p = ggplot(data.3SD.AngSim, aes(color=Simon,  y=RT, x=Angle))
+##画上点和errorbar，设置点的大小，添加errorbar
+p = p + geom_point(size=4) + geom_errorbar(limits, width=0.1, size=0.8)
+##画上线条
+p = p + geom_line(aes(group=LineGroup), size=1.5)+ylim(750,1250)
+##添加横纵坐标
+p = p + ylab("RT (ms)")
+p = p + xlab("CannonAngle")
+##设置线条对应的颜色属
+p = p + scale_color_manual(values=c("#0000FF", "#FF0000"))
+##添加标题
+#p = p + labs(title = "Cannon Angle Simon")
+##采用白背景，黑线主题
+p = p + theme_classic()
+p=p+theme(legend.position = c(.15, .89))
+##保存有legend的eps格式图片
+ggsave(p, file="exp2_AngSim_RT.eps",
+       width=4, height=4, dpi=150, bg="transparent",path=pa)
+ggsave(p, file="exp2_AngSim_RT.png",
+       width=4, height=4, dpi=150, bg="transparent",path=pa)
+
+
+##编写repeated-measure ANOVA的eta-squared函数
+es=function(x,n=NULL) {
+       if(is.null(n)) n=length(names(x))-2
+       k=NULL
+       p=summary(x)
+       for(i in (1:n)+1) {
+           l=unlist(p[i][[1]])
+           k=c(k,l[3]/sum(l[3:4]))
+       }
+       names(k)=names(p)[(1:n)+1]
+       k
+   }
+
+sink(paste(pa,'bartlett angcoltar RT.txt',sep='/'))
+##方差齐性检验
+bartlett.test(RT~interaction(Angle,ColorRatio,
+TargetColor),data=data.3SD.AngColTar.Subject)
+sink()
+##目标颜色，大炮夹角和背景点颜色比例方差分析
+AngColRat=aov(RT ~ Angle*TargetColor*ColorRatio + Error(Subject/
+(Angle*TargetColor*ColorRatio)), data=data.3SD.AngColTar.Subject)
+sink(paste(pa,'aov TargetColor_ColorRatio_Angle RT.txt',sep='/'))
+summary(AngColRat)
+cat('\n\nEta-Squared\n')
+es(AngColRat)
+sink()
+
+##方差齐性检验
+sink(paste(pa,'bartlett angsim.txt',sep='/'))
+bartlett.test(RT~interaction(Angle,Simon),data=data.3SD.AngSim.Subject)
+sink()
+##大炮朝向和夹角方差分析
+Result=(aov(RT ~ Angle*Simon+ Error(Subject/(Angle*Simon)),
+ data=data.3SD.AngSim.Subject))
+sink(paste(pa,'aov Simon_Angle RT.txt',sep='/'))
+summary(Result)
+cat('\n\nEta-Squared\n')
+es(Result)
+sink()
+data.3SD.AngSim.Subject$Simon=factor(data.3SD.AngSim.Subject$Simon)
+
+##输出平均值标准差
+write.csv(data.3SD.AngSim,paste(pa,'不同条件下的均值方差_Response Time_AngSim RT.csv',sep='/'))
+write.csv(data.3SD.AngColTar,paste(pa,'不同条件下的均值方差_Response Time_AngColTar RT.csv',sep='/'))
+
+###SPSS
+library(reshape)
+data.SPSS.AngColTar=cast(data.3SD.AngColTar.Subject,Subject~Angle~TargetColor~ColorRatio,value="RT")
+write.table(data.SPSS.AngColTar,paste(pa,'data_SPSS_AngColTar.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+data.SPSS.AngSim=cast(data.3SD.AngSim.Subject,Subject~Angle~Simon,value="RT")
+write.table(data.SPSS.AngSim,paste(pa,'data_SPSS_AngSim.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+
+###SPSS_180,0
+data.3SD.AngColTar.Subject.180=subset(data.3SD.AngColTar.Subject,Angle==180)
+data.SPSS.AngColTar.180=cast(data.3SD.AngColTar.Subject.180,Subject~Angle~TargetColor~ColorRatio,value="RT")
+write.table(data.SPSS.AngColTar.180,paste(pa,'data_SPSS_AngColTar_180.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+data.3SD.AngColTar.Subject.0=subset(data.3SD.AngColTar.Subject,Angle==0)
+data.SPSS.AngColTar.0=cast(data.3SD.AngColTar.Subject.0,Subject~Angle~TargetColor~ColorRatio,value="RT")
+write.table(data.SPSS.AngColTar.0,paste(pa,'data_SPSS_AngColTar_0.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+
+
+##分离出冲突，颜色比例，目标颜色的数据
+data.3SD.ColTar.Subject=ddply(data.3SD,.(Subject,TargetColor,ColorRatio),summarize,RT=mean(RT))
+data.3SD.ColTar=ddply(data.3SD.ColTar.Subject,.(TargetColor,ColorRatio),summarize,RT.SD=sd(RT),RT=mean(RT))
+data.SPSS.ColTar=cast(data.3SD.ColTar.Subject,Subject~TargetColor~ColorRatio,value="RT")
+write.table(data.SPSS.ColTar,paste(pa,'data_SPSS_ColTar.csv',sep='/'),sep=',',col.names=NA,qmethod="double")
+
+
+
+###计算用于相关分析的差异值
+#180°条件下的三种比例对应的蓝色-红色的反应时差值
+c180=subset(data.3SD.AngColTar.Subject,Angle==180)
+Ratio26.Angle180=subset(c180,ColorRatio=="2 : 6")
+Ratio26.Angle180.R=subset(Ratio26.Angle180,TargetColor=="R")
+Ratio26.Angle180.B=subset(Ratio26.Angle180,TargetColor=="B")
+diff26=Ratio26.Angle180.B$RT-Ratio26.Angle180.R$RT
+
+Ratio44.Angle180=subset(c180,ColorRatio=="4 : 4")
+Ratio44.Angle180.R=subset(Ratio44.Angle180,TargetColor=="R")
+Ratio44.Angle180.B=subset(Ratio44.Angle180,TargetColor=="B")
+diff44=Ratio44.Angle180.B$RT-Ratio44.Angle180.R$RT
+
+Ratio62.Angle180=subset(c180,ColorRatio=="6 : 2")
+Ratio62.Angle180.R=subset(Ratio62.Angle180,TargetColor=="R")
+Ratio62.Angle180.B=subset(Ratio62.Angle180,TargetColor=="B")
+diff62=Ratio62.Angle180.B$RT-Ratio62.Angle180.R$RT
+
+write.csv(diff26,paste(pa,'Diff26_BR_RT.csv',sep='/'))
+write.csv(diff44,paste(pa,'Diff44_BR_RT.csv',sep='/'))
+write.csv(diff62,paste(pa,'Diff62_BR_RT.csv',sep='/'))
+
+##分离出180度条件下的likely 和unlikely条件下的反应时
+c180=subset(c180,ColorRatio!="4 : 4")
+a=((c180$ColorRatio=="6 : 2"&c180$TargetColor=="B")|(c180$ColorRatio=="2 : 6"&c180$TargetColor=="R"))
+b=((c180$ColorRatio=="6 : 2"&c180$TargetColor=="R")|(c180$ColorRatio=="2 : 6"&c180$TargetColor=="B"))
+c180$Salience[a]="Sal"
+c180$Salience[b]="nonSal"
+likelyRT=subset(c180,Salience=="Sal")
+likelyRT=ddply(likelyRT,.(Subject),summarize,RT=mean(RT))
+unlikelyRT=subset(c180,Salience=="nonSal")
+unlikelyRT=ddply(unlikelyRT,.(Subject),summarize,RT=mean(RT))
+difflikely=unlikelyRT$RT-likelyRT$RT
+
+write.csv(difflikely,paste(pa,'difflikely_RT.csv',sep='/'))
+
+#不同角度下的Simon差值
+data.3SD.Angle.Subject=ddply(data.3SD,.(Subject,Angle),summarize,RT=mean(RT))
+Angle0=subset(data.3SD.Angle.Subject,Angle==0)
+Angle180=subset(data.3SD.Angle.Subject,Angle==180)
+angle=Angle180$RT-Angle0$RT
+
+data.3SD.Simon.Subject=ddply(data.3SD,.(Subject,Simon),summarize,RT=mean(RT))
+SimonC =subset(data.3SD.Simon.Subject,Simon=='Up')
+SimonI=subset(data.3SD.Simon.Subject,Simon=='Down')
+Simon=SimonI$RT-SimonC$RT
+
+write.csv(Simon,paste(pa,'SimonDiff_RT.csv',sep='/'))
+write.csv(angle,paste(pa,'AngleDiff_RT.csv',sep='/'))
+
+
+# ##输出timeDistribution对应的不同条件下的平均反应时
+# 180度条件下的目标点出现在salient点中的平均反应时
+a=((data.3SD$nRedPellets==2&data.3SD$TargetColor=="B")|(data.3SD$nRedPellets==6&data.3SD$TargetColor=="R" ))
+b=((data.3SD$nRedPellets==2&data.3SD$TargetColor=="R")|(data.3SD$nRedPellets==6&data.3SD$TargetColor=="B" ))
+data.3SD$Salience[a]="Sal"
+data.3SD$Salience[b]="nonSal"
+
+data.3SD$AngSal=paste(data.3SD$Angle,data.3SD$Salience, sep="_")
+data.3SD.AngSal.Subject=ddply(data.3SD,.(Subject,AngSal),summarize,RT=mean(RT))
+data.3SD.AngSal=ddply(data.3SD.AngSal.Subject,.(AngSal),summarize,RT=mean(RT))
+write.csv(data.3SD.AngSal,paste(pa,'Angle_Salience_RT.csv',sep='/'))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
